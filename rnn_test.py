@@ -4,16 +4,17 @@ import os
 
 # hyper parameters
 
-feature_size=300
+feature_size=600
 max_steps = 100
 train_epochs = 100
 cell_type = RNNModel.CellType.RNN_CELL_TYPE_GRU
 cell_size = 512
 batch_size = 50
 num_classes = 8
+num_entity_classes = 42
 num_layers = 3
 learning_rate = 1e-4
-model_name = 'spacy_default'
+model_name = 'spacy_default_ent'
 
 state_feeback = False # may cause an exception when processing the last batch
 
@@ -45,6 +46,7 @@ if __name__ == '__main__':
             set_cell_size(cell_size). \
             set_batch_size(batch_size). \
             set_class_size(num_classes). \
+            set_entity_class_size(num_entity_classes) .\
             set_layer_size(num_layers). \
             set_model_path(model_path). \
             set_model_name(model_name).\
@@ -74,7 +76,8 @@ if __name__ == '__main__':
         set_cell_type(cell_type).\
         set_cell_size(cell_size).\
         set_batch_size(batch_size).\
-        set_class_size(num_classes).\
+        set_class_size(num_classes). \
+        set_entity_class_size(num_entity_classes). \
         set_layer_size(num_layers).\
         set_learning_rate(learning_rate). \
         set_model_path(model_path). \

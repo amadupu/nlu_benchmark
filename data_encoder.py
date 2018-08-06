@@ -20,33 +20,75 @@ class TFEncoder(object):
 
     def make_example(self,sent,label):
         ex = tf.train.SequenceExample()
+        phrase = r''
+        entity_labels = list()
+        sent_len = len(sent)
+        for index,item in enumerate(sent):
+            phrase += item[0]
+            if index < sent_len - 1:
+                phrase += ' '
+            entity_labels.append(item[1])
 
-        doc = self.nlp(sent)
+        doc = self.nlp(phrase)
+        if len(doc) != len(sent):
+            print('\nDoc: ',end='')
+            for tok in doc:
+                print(tok.text_with_ws, end='')
+            print('\nSent: ', phrase)
+            raise Exception('Doc Sent Size Mismatch')
+
         word_count = 0
         xs = list()
+
         for token in doc:
-            if not token.is_punct and not token.is_stop and not token.is_space and token.has_vector:
-                xs.append(token.vector)
+            pos = token.pos_
+
+
+            if pos == 'CCONJ':
+                pos = 'CONJ'
+            elif pos == 'PROPN':
+                pos = 'PROP'
+            elif pos == 'PUNCT':
+                pos = 'PUN'
+            elif pos == 'SCONJ':
+                pos = 'SCO'
+
+            if not self.nlp(pos)[0].has_vector:
+                raise Exception('Invalid vector for pos: ', pos )
+
+            pos_vector = self.nlp(pos)[0].vector
+            token_vector = token.vector
+            # if not token.has_vector:
+            #     token_vector = pos_vector
+            xs.append(np.concatenate((token_vector,pos_vector),axis=-1))
+            # if not token.is_punct and not token.is_stop and not token.is_space and token.has_vector:
+
 
 
         # add context features
 
 
         sequence_length = len(xs)
+
+        if sequence_length != len(entity_labels):
+            raise Exception('Input Vector and Entity Label Size mismatch', sequence_length, len(entity_labels))
         # print('Generating Record of Length: {}'.format(sequence_length))
         ex.context.feature['len'].int64_list.value.append(sequence_length)
         ex.context.feature['label'].int64_list.value.append(label)
 
         # add sequence features
         fl_tokens = ex.feature_lists.feature_list['tokens']
+        fl_labels = ex.feature_lists.feature_list['entity_labels']
 
 
 
-        for token in xs:
+        for token,ent_label in zip(xs,entity_labels):
             if np.ndim(token) == 0:
                 fl_tokens.feature.add().float_list.value.append(token)
             else:
                 fl_tokens.feature.add().float_list.value.extend(token)
+
+            fl_labels.feature.add().int64_list.value.append(ent_label)
 
         return ex
 
@@ -86,11 +128,13 @@ class TFEncoder(object):
 
 
             # preprocess the data
-            categories, data = generate_data(self.data_src,is_test=self.is_test_data)
+            headers,  data = generate_data(self.data_src,is_test=self.is_test_data)
 
             # make categories header
             with open('headers.json','w') as fp:
-                json.dump(categories,fp)
+                json.dump(headers,fp)
+
+
 
             self.dump_records(data=data)
             return True

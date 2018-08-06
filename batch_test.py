@@ -5,7 +5,7 @@ import numpy as np
 
 if __name__ == '__main__':
     decoder = TFDecoder.Builder(). \
-        set_feature_size(300). \
+        set_feature_size(600). \
         set_num_epochs(1). \
         set_path('records/train'). \
         set_shuffle_status(True). \
@@ -42,7 +42,7 @@ if __name__ == '__main__':
             while not coord.should_stop():
                 result = sess.run(batch_input)
 
-                print(np.shape(result[0]),np.shape(result[1]), result[2])
+                print(np.shape(result[0]),np.shape(result[1]), result[2], result[3])
                 # print(np.shape(result[4]),np.shape(result[5]))
 
         except tf.errors.OutOfRangeError:

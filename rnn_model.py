@@ -15,6 +15,7 @@ class RNNModel(object):
         self.num_layers = builder.num_layers
         self.max_steps = builder.max_steps
         self.num_classes = builder.num_classes
+        self.num_entity_classes = builder.num_entity_classes
         self.cell_size = builder.cell_size
         self.cell_type = builder.cell_type
         self.learning_rate = builder.learning_rate
@@ -46,7 +47,8 @@ class RNNModel(object):
                         self.xs = tf.placeholder(tf.float32,[1,None,self.feature_size],name='xs')
                         # pad's second argument can be seen as [[up, down], [left, right]]
                         if self.is_classifier:
-                            self.ys = tf.placeholder(tf.int64, [None], name='ys')
+                            self.zs = tf.placeholder(tf.int64, [None], name='zs')
+                            self.ys = tf.placeholder(tf.int64, [1, None], name='ys')
                         else:
                             self.ys = tf.placeholder(tf.int64, [1, None], name='ys')
 
@@ -58,14 +60,16 @@ class RNNModel(object):
                             set_path(self.read_path). \
                             set_shuffle_status(True). \
                             build()
-                        self.steps, self.xs , self.ys = tf.train.batch(tensors=decoder.dequeue(self.is_classifier), batch_size=self.batch_size,
+                        self.steps, self.xs , self.ys, self.zs = tf.train.batch(tensors=decoder.dequeue(self.is_classifier), batch_size=self.batch_size,
                                                                   dynamic_pad=True,
                                                                   allow_smaller_final_batch=True,name='batch_processor')
                         self.global_step = tf.Variable(0, name="global_step", trainable=False)
+                        # self.global_step = tf.Variable(0, name="global_step", trainable=False)
 
 
                 xs = self.xs
                 ys = self.ys
+                zs = self.zs
 
                 # if self.is_timemajor is True:
                 #     xs = tf.transpose(self.xs,perm=[1,0,2])
@@ -188,18 +192,28 @@ class RNNModel(object):
                     #
                     # rnn_outputs = tf.transpose(rnn_outputs,perm=[1,0,2])
 
-                with tf.name_scope('output_layer'):
+                with tf.name_scope('output_layer_1'):
                     with tf.name_scope('Weights'):
-                        Wout = self.weight_variable([cell_size,self.num_classes],name='W_out')
+                        Wout_1 = self.weight_variable([cell_size,self.num_entity_classes],name='W_out_1')
                         if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
-                            tf.summary.histogram('output_layer/Weights',Wout)
+                            tf.summary.histogram('output_layer_1/Weights_1',Wout_1)
                     with tf.name_scope('Biases'):
-                        Bout = self.bias_variable([self.num_classes],name='B_out')
+                        Bout_1 = self.bias_variable([self.num_entity_classes],name='B_out_1')
                         if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
-                            tf.summary.histogram('outpu_layer/Weights',Bout)
+                            tf.summary.histogram('outpu_layer_1/Bias_1',Bout_1)
 
+                with tf.name_scope('output_layer_2'):
+                    with tf.name_scope('Weights'):
+                        Wout_2 = self.weight_variable([cell_size,self.num_classes],name='W_out_2')
+                        if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
+                            tf.summary.histogram('output_layer_2/Weights_2',Wout_2)
+                    with tf.name_scope('Biases'):
+                        Bout_2 = self.bias_variable([self.num_classes],name='B_out_2')
+                        if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
+                            tf.summary.histogram('outpu_layer_2/Bias_2',Bout_2)
 
-                    if self.is_classifier is True:
+                ntime_steps = tf.shape(rnn_outputs)[1]
+                if self.is_classifier is True:
                         # get last rnn output
                         # self.test_rnn_outputs = tf.transpose(rnn_outputs,perm=[1,0,2])[-1]
 
@@ -209,30 +223,46 @@ class RNNModel(object):
                         self.idx0 = tf.range(tf.cast(batch_size,tf.int64))
                         self.idx1 = self.idx0 * tf.cast(tf.shape(tf.cast(rnn_outputs,tf.int64))[1],tf.int64)
                         self.idx2 =  self.idx1 + (self.steps - 1)
-                        rnn_outputs = tf.gather(tf.reshape(rnn_outputs, [-1, cell_size]), self.idx2)
 
-                    else:
+
+                        rnn_outputs = tf.reshape(rnn_outputs, [-1, cell_size])
+                        self.last_rnn_output = tf.gather(rnn_outputs, self.idx2)
+
+
+                else:
                         rnn_outputs = tf.reshape(rnn_outputs, [-1, cell_size])
 
 
-                    #for seq2seq calcuations
-                    self.rnn_outputs = rnn_outputs
+                #for seq2seq calcuations
+                self.rnn_outputs = rnn_outputs
 
-                    logits = tf.add(tf.matmul(rnn_outputs,Wout),Bout)
+                class_logits = tf.add(tf.matmul(self.last_rnn_output,Wout_2),Bout_2)
 
-                    # for seq2seq calculations
-                    self.logits = tf.nn.softmax(logits)
+                entity_logits = tf.add(tf.matmul(rnn_outputs,Wout_1),Bout_1)
 
-                    self.predictions = tf.argmax(self.logits,axis=-1)
-                    self.flat_labels = tf.reshape(ys, [-1])
+                # for seq2seq calculations
+                self.class_logits = tf.nn.softmax(class_logits)
+                self.entity_logits = tf.reshape(entity_logits,[-1, ntime_steps, self.num_entity_classes])
 
-                with tf.name_scope('accuracy'):
-                    self.accuracy = tf.reduce_mean(tf.cast(tf.equal(self.flat_labels,self.predictions),tf.float32),name='accuracy')
-                    tf.summary.scalar('Accuracy',self.accuracy)
+                # self.entity_logits = tf.nn.softmax(entity_logits)
+
+                self.class_predictions = tf.argmax(self.class_logits,axis=-1)
+                self.class_flat_labels = tf.reshape(zs, [-1])
+
+                # self.entity_predictions = tf.argmax(self.entity_logits,axis=-1)
+
+                self.entity_flat_labels = tf.reshape(ys, [-1])
 
                 with tf.name_scope('cross_entropy'):
-                    self.loss = tf.reduce_mean(
-                        tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=self.flat_labels))
+
+                    self.class_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.class_logits, labels=self.class_flat_labels))
+
+                    self.log_likelihood, self.trans_params = tf.contrib.crf.crf_log_likelihood(self.entity_logits, ys,
+                                                                                               tf.cast(self.steps,dtype=tf.int32))
+
+                    self.entity_loss = tf.reduce_mean(-self.log_likelihood)
+
+                    self.loss = self.entity_loss + self.class_loss
                     # if self.is_classifier:
                     #     self.loss = tf.reduce_mean(
                     #         tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=self.flat_labels))
@@ -248,12 +278,37 @@ class RNNModel(object):
                     #         self.loss = tf.reduce_mean(
                     #             tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=self.flat_labels))
 
-                    tf.summary.scalar('Cross Entropy', self.loss)
+                    tf.summary.scalar('Class Cross Entropy', self.class_loss)
+                    tf.summary.scalar('Entity Cross Entropy', self.entity_loss)
+
+                with tf.name_scope('accuracy'):
+
+                    entity_predictions , self.entity_scores = tf.contrib.crf.crf_decode(self.entity_logits, self.trans_params, tf.cast(self.steps,dtype=tf.int32))
+                    self.entity_predictions = tf.cast(tf.reshape(entity_predictions,[-1]),dtype=tf.int64)
+                    # self.entity_accuracy = tf.reduce_mean(tf.cast(tf.equal(
+                    #     self.entity_flat_labels,self.entity_predictions, tf.float32)),name='entity_accuracy')
+
+                    self.entity_accuracy = tf.reduce_mean(
+                            tf.cast(tf.equal(self.entity_flat_labels, self.entity_predictions), tf.float32),
+                            name='entity_accuracy')
+
+                    self.class_accuracy = tf.reduce_mean(
+                            tf.cast(tf.equal(self.class_flat_labels, self.class_predictions), tf.float32),
+                            name='class_accuracy')
+
+                    tf.summary.scalar('Entity Accuracy', self.entity_accuracy)
+                    tf.summary.scalar('Class Accuracy', self.class_accuracy)
                     # weights = tf.reshape
                     # tf.contrib.legacy_seq2seq.sequence_loss_by_example(logits=logits, labels=self.logits)
                 if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
                     with tf.name_scope('train'):
-                        self.train_step = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss,global_step=self.global_step,name='train_step')
+                        self.cls_train_step = tf.train.AdamOptimizer(self.learning_rate).minimize(self.class_loss,global_step=self.global_step,name='class_train_step')
+                        self.entity_train_step = tf.train.AdamOptimizer(self.learning_rate).minimize(self.entity_loss,
+                                                                                        global_step=self.global_step,
+                                                                                          name='entity_train_step')
+                        # self.train_step = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss,
+                        #                                                                           global_step=self.global_step,
+                        #                                                                           name='train_step')
 
                 self.saver = tf.train.Saver(tf.global_variables(),keep_checkpoint_every_n_hours=1,max_to_keep=2)
 
@@ -315,6 +370,7 @@ class RNNModel(object):
             count = 0
             total_loss = 0.0
             total_acc = 0.0
+            total_ent_acc = 0.0
 
             while not self.coord.should_stop():
 
@@ -336,9 +392,10 @@ class RNNModel(object):
                 # print('steps: ',steps, np.shape(steps))
                 # continue
 
-                _,loss,  accuracy, summary, final_state, state_fw, ys, steps, pred     = self.sess.run([self.train_step,self.loss, self.accuracy, self.summary, self.final_state, self.state_fw, self.flat_labels, self.steps, self.predictions],feed_dict)
+                _,_,loss,  class_accuaracy, entity_accuracy, summary, final_state , entity_predictions, scores, ys   = self.sess.run([self.cls_train_step, self.entity_train_step, self.loss, self.class_accuracy, self.entity_accuracy, self.summary, self.final_state, self.entity_predictions, self.entity_scores, self.ys],feed_dict)
                 total_loss += loss
-                total_acc += accuracy
+                total_acc += class_accuaracy
+                total_ent_acc += entity_accuracy
                 count += 1
 
                 # print('Accuracy: {} final_state: {}'.format(accuracy,np.shape(final_state)))
@@ -354,16 +411,18 @@ class RNNModel(object):
                 # print('Final State:{} {} {}'.format(self.oper_mode,np.shape(final_state), final_state))
 
                 current_step = tf.train.global_step(self.sess, self.global_step)
-                print('Train: ',current_step,loss,accuracy)
+                # , entity_predictions, np.reshape(ys,[-1])
+                print('Train: ',current_step,loss,class_accuaracy, entity_accuracy)
                 if current_step % self.validation_step == 0:
                     self.summary_writer.add_summary(summary, current_step)
                     self.summary_writer.flush()
                     # print(seq_weights)
                     # print('Saving model params for step: ', current_step)
 
-                    print('{} Loss: {} Accuarcy {}'.format(self.oper_mode, total_loss / count, total_acc / count))
+                    print('{} Loss: {} Class Accuarcy {} Entity Accuracy {}'.format(self.oper_mode, total_loss / count, total_acc / count, total_ent_acc/count))
                     total_loss = 0.0
                     total_acc = 0.0
+                    total_ent_acc = 0.0
                     count = 0
 
                     self.saver.save(self.sess, path, global_step=current_step, write_meta_graph=False)
@@ -408,14 +467,17 @@ class RNNModel(object):
         count = 0
         total_loss = 0.0
         total_acc = 0.0
+        total_ent_acc = 0.0
+
         summary = None
         try:
             feed_dict = {self.keepprob: keepprob}
 
             while not self.coord.should_stop():
-                loss, accuracy, summary = self.sess.run([self.loss,self.accuracy, self.summary],feed_dict)
+                loss, class_accuracy,entity_accuracy, summary = self.sess.run([self.loss,self.class_accuracy,self.entity_accuracy, self.summary],feed_dict)
                 total_loss += loss
-                total_acc += accuracy
+                total_acc += class_accuracy
+                total_ent_acc += entity_accuracy
                 count += 1
 
 
@@ -428,14 +490,16 @@ class RNNModel(object):
             if count > 0:
                 self.summary_writer.add_summary(summary, curr_step)
                 self.summary_writer.flush()
-                print('{} Loss : {}  Accuracy: {}'.format(self.oper_mode, total_loss/count, total_acc/count))
+                print('{} Loss : {}  Class Accuracy: {} Entity Accuracy: {}'.format(self.oper_mode, total_loss/count, total_acc/count, total_ent_acc/count))
         self.coord.join(self.threads)
         self.threads = None
 
     def test(self,xs,steps):
         feed_dict = {self.keepprob: 1.0, self.xs : xs, self.steps : steps}
 
-        result = self.sess.run(self.predictions, feed_dict)
+        result = self.sess.run([self.class_predictions, self.entity_predictions], feed_dict)
+
+        print(result)
 
         # print(score[:steps[0]])
 
@@ -456,6 +520,7 @@ class RNNModel(object):
             self.read_path = ''
             self.feature_size = 300
             self.num_classes = 8
+            self.num_entity_classes = 42
             self.cell_size = 128
             self.max_steps = 50
             self.num_layers = 1
@@ -499,6 +564,11 @@ class RNNModel(object):
 
         def set_class_size(self,val):
             self.num_classes = val
+            return self
+
+
+        def set_entity_class_size(self,val):
+            self.num_entity_classes = val
             return self
 
         def set_cell_size(self,val):

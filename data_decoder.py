@@ -28,7 +28,8 @@ class TFDecoder(object):
         }
 
         sequence_features = {
-            "tokens": tf.FixedLenSequenceFeature([self.feature_size], dtype=tf.float32)
+            "tokens": tf.FixedLenSequenceFeature([self.feature_size], dtype=tf.float32),
+            "entity_labels": tf.FixedLenSequenceFeature([], dtype=tf.int64)
         }
 
         context_parsed, sequence_parsed = tf.parse_single_sequence_example(serialized=ex,
@@ -36,10 +37,10 @@ class TFDecoder(object):
                                                                            sequence_features=sequence_features)
         # return context_parsed["len"], context_parsed["id"] ,  context_parsed["seq-id"],  context_parsed["label"], sequence_parsed["tokens"], sequence_parsed["labels"]
 
-        if classifer:
-            return context_parsed["len"], sequence_parsed["tokens"], context_parsed["label"]
-        else:
-            return context_parsed["len"], sequence_parsed["tokens"], sequence_parsed["label"],
+        # if classifer:
+        #     return context_parsed["len"], sequence_parsed["tokens"], context_parsed["label"]
+        # else:
+        return context_parsed["len"], sequence_parsed["tokens"], sequence_parsed["entity_labels"], context_parsed["label"]
 
     class Builder():
         def __init__(self):
@@ -77,7 +78,7 @@ class TFDecoder(object):
 if __name__ == '__main__':
 
     decoder = TFDecoder.Builder().\
-        set_feature_size(300).\
+        set_feature_size(600).\
         set_num_epochs(1).\
         set_path(os.path.join('records','train')).\
         set_shuffle_status(True).\
@@ -96,7 +97,7 @@ if __name__ == '__main__':
         try:
             while not coord.should_stop():
                 result = sess.run(batch_input)
-                print(result[0],np.shape(result[1]),result[2])
+                print(result[0],np.shape(result[1]),result[2] , result[3])
         except tf.errors.OutOfRangeError:
             pass
         finally:
