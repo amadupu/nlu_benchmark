@@ -1,22 +1,21 @@
 import spacy, re, os, json
 from enum import Enum
+from tqdm import tqdm
 
-model_path = r'/home/arun_madupu/projects/corpus/glove'
+model_1 = r'/home/arun_madupu/projects/corpus/glove'
+model_2 = r'en_vectors_web_lg'
 
 input_path = r'/home/arun_madupu/projects/nlu-benchmark/2017-06-custom-intent-engines'
 
 
 
 
-def validate(path,is_test=False):
+def validate(model_path,model_name):
+    print(model_path)
 
     nlp = spacy.load(model_path)
 
-    if is_test is True:
-        filename_pattern = re.compile(r'validate.*[.]json')
-    else:
-        filename_pattern = re.compile(r'train.*full[.]json')
-
+    filename_pattern = re.compile(r'(validate.*|train.*full)[.]json')
 
     valid_words  = set()
 
@@ -43,6 +42,7 @@ def validate(path,is_test=False):
                 print('FAILED! ', err)
 
             if data is None:
+                print('Data is None')
                 continue
 
             for topic, values in data.items():
@@ -51,23 +51,29 @@ def validate(path,is_test=False):
                     sent = list()
                     for elem in data_list:
                         segment = elem['text']
+                        #print('Segment:', segment)
                         segment = segment.split()
                         for _, word in enumerate(segment):
-                            if nlp(word).has_vector is False:
-                                invalid_words.add(word)
-                            else:
-                                valid_words.add(word)
+                            doc = nlp(word)
+                            for tok in doc:
+                               if tok.has_vector is False:
+                                  invalid_words.add(word)
+                               else:
+                                  valid_words.add(word)
 
 
     print('Summary: Valid Words: {} Invalid Words: {}'.format(len(valid_words), len(invalid_words)))
 
 
-    with open('invalid-words.txt','w',encoding='utf-8') as fp:
+    with open('invalid-words-{}.txt'.format(model_name),'w',encoding='utf-8') as fp:
         for x in invalid_words:
-            fp.write(x)
+            fp.write(x+'\n')
 
 
 
+if __name__ == '__main__':
+    validate(model_1,'glove')
+    validate(model_2,'spacy')
 
 
 

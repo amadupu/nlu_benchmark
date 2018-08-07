@@ -1,6 +1,7 @@
 import os
 import tensorflow as tf
 import numpy as np
+from paths import *
 
 
 
@@ -78,7 +79,7 @@ class TFDecoder(object):
 if __name__ == '__main__':
 
     decoder = TFDecoder.Builder().\
-        set_feature_size(600).\
+        set_feature_size(max_time_steps).\
         set_num_epochs(1).\
         set_path(os.path.join('records','train')).\
         set_shuffle_status(True).\

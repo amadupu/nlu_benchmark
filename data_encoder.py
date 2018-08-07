@@ -15,7 +15,7 @@ class TFEncoder(object):
         self.data_dest = builder.data_dest
         self.file_limit = builder.file_limit
         self.is_test_data = builder.is_test_data
-        self.nlp = spacy.load('en_core_web_lg')
+        self.nlp = spacy.load(model_path)
 
 
     def make_example(self,sent,label):
@@ -53,14 +53,15 @@ class TFEncoder(object):
             elif pos == 'SCONJ':
                 pos = 'SCO'
 
-            if not self.nlp(pos)[0].has_vector:
-                raise Exception('Invalid vector for pos: ', pos )
+            #if not self.nlp(pos)[0].has_vector:
+            #    raise Exception('Invalid vector for pos: ', pos )
 
-            pos_vector = self.nlp(pos)[0].vector
+            #pos_vector = self.nlp(pos)[0].vector
             token_vector = token.vector
-            # if not token.has_vector:
-            #     token_vector = pos_vector
-            xs.append(np.concatenate((token_vector,pos_vector),axis=-1))
+            if not token.has_vector:
+                token_vector = self.nlp('UNK')[0].vector
+            #xs.append(np.concatenate((token_vector,pos_vector),axis=-1))
+            xs.append(token_vector)
             # if not token.is_punct and not token.is_stop and not token.is_space and token.has_vector:
 
 

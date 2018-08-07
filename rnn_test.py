@@ -1,15 +1,16 @@
 from rnn_model import RNNModel
 import threading
 import os
+from paths import *
 
 # hyper parameters
 
-feature_size=600
+feature_size=max_time_steps
 max_steps = 100
 train_epochs = 100
 cell_type = RNNModel.CellType.RNN_CELL_TYPE_GRU
 cell_size = 512
-batch_size = 50
+batch_size = 100
 num_classes = 8
 num_entity_classes = 42
 num_layers = 3
@@ -19,7 +20,7 @@ model_name = 'spacy_default_ent'
 state_feeback = False # may cause an exception when processing the last batch
 
 bi_directional=True
-validation_step = 30
+validation_step = 100
 is_classifer = True
 
 time_major = False # deprecated

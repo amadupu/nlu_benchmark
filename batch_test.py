@@ -2,10 +2,11 @@
 from data_decoder import TFDecoder
 import tensorflow as tf
 import numpy as np
+from paths import *
 
 if __name__ == '__main__':
     decoder = TFDecoder.Builder(). \
-        set_feature_size(600). \
+        set_feature_size(max_time_steps). \
         set_num_epochs(1). \
         set_path('records/train'). \
         set_shuffle_status(True). \

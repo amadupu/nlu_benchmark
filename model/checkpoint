@@ -1,0 +1,3 @@
+model_checkpoint_path: "spacy_default_ent-3500"
+all_model_checkpoint_paths: "spacy_default_ent-3400"
+all_model_checkpoint_paths: "spacy_default_ent-3500"
