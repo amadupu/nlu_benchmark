@@ -15,7 +15,10 @@ class TFEncoder(object):
         self.data_dest = builder.data_dest
         self.file_limit = builder.file_limit
         self.is_test_data = builder.is_test_data
-        self.nlp = spacy.load(model_path)
+        self.nlp = spacy.load(spacy_model_path)
+        self.nlp_pos = spacy.load('en_core_web_lg')
+        self.id = 1
+        self.pos_map = dict()
 
 
     def make_example(self,sent,label):
@@ -29,7 +32,8 @@ class TFEncoder(object):
                 phrase += ' '
             entity_labels.append(item[1])
 
-        doc = self.nlp(phrase)
+        phrase.lower()
+        doc = self.nlp_pos(phrase)
         if len(doc) != len(sent):
             print('\nDoc: ',end='')
             for tok in doc:
@@ -53,15 +57,20 @@ class TFEncoder(object):
             elif pos == 'SCONJ':
                 pos = 'SCO'
 
-            #if not self.nlp(pos)[0].has_vector:
-            #    raise Exception('Invalid vector for pos: ', pos )
+            if not self.nlp(pos)[0].has_vector:
+                   raise Exception('Invalid vector for pos: ', pos )
 
-            #pos_vector = self.nlp(pos)[0].vector
-            token_vector = token.vector
+            pos_vector   = self.nlp(pos)[0].vector
+            token = self.nlp(token.text)[0]
+
             if not token.has_vector:
                 token_vector = self.nlp('UNK')[0].vector
-            #xs.append(np.concatenate((token_vector,pos_vector),axis=-1))
-            xs.append(token_vector)
+            else:
+                token_vector = token.vector
+
+            xs.append(np.concatenate((token_vector,pos_vector),axis=-1))
+            # print(np.shape(xs),pos,np.shape(pos_vector))
+            # xs.append(token_vector)
             # if not token.is_punct and not token.is_stop and not token.is_space and token.has_vector:
 
 
@@ -76,6 +85,8 @@ class TFEncoder(object):
         # print('Generating Record of Length: {}'.format(sequence_length))
         ex.context.feature['len'].int64_list.value.append(sequence_length)
         ex.context.feature['label'].int64_list.value.append(label)
+        ex.context.feature['id'].int64_list.value.append(self.id)
+        self.id += 1
 
         # add sequence features
         fl_tokens = ex.feature_lists.feature_list['tokens']
@@ -112,7 +123,7 @@ class TFEncoder(object):
         while count < data_len:
             batch = data[count : count + limit]
             target = os.path.join(self.data_dest, '{}.trf'.format(get_file_timestamp()))
-            # print('Writing to {} record'.format(target))
+            print('Writing to {} record'.format(target))
             tf_writer = tf.python_io.TFRecordWriter(target)
             for sent,label in batch:
                 ex = self.make_example(sent,label)
@@ -131,12 +142,14 @@ class TFEncoder(object):
             # preprocess the data
             headers,  data = generate_data(self.data_src,is_test=self.is_test_data)
 
-            # make categories header
-            with open('headers.json','w') as fp:
-                json.dump(headers,fp)
+            # capture headers only for trainng data
+            if not self.is_test_data:
+                # make categories header
+                with open('headers.json','w') as fp:
+                    json.dump(headers,fp)
 
 
-
+            print('dump records')
             self.dump_records(data=data)
             return True
 
@@ -179,18 +192,6 @@ if __name__ == '__main__':
     clean_dir('records')
 
     encoder = TFEncoder.Builder().\
-        set_data_dest(os.path.join('records','train')).\
-        set_data_source(input_data_source_path).\
-        set_file_limit(100).\
-        set_test_data(False).\
-        build()
-
-    if encoder.encode() is True:
-        print("Encode Train Successful")
-    else:
-        print('Encode Train Failure')
-
-    encoder = TFEncoder.Builder().\
         set_data_dest(os.path.join('records','eval')).\
         set_data_source(input_data_source_path).\
         set_file_limit(100).\
@@ -202,6 +203,19 @@ if __name__ == '__main__':
         print("Encode Eval Successful")
     else:
         print('Encode Eval Failure')
+
+    encoder = TFEncoder.Builder().\
+        set_data_dest(os.path.join('records','train')).\
+        set_data_source(input_data_source_path).\
+        set_file_limit(100).\
+        set_test_data(False).\
+        build()
+
+    if encoder.encode() is True:
+        print("Encode Train Successful")
+    else:
+        print('Encode Train Failure')
+
 
 
 

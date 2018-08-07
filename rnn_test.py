@@ -3,39 +3,6 @@ import threading
 import os
 from paths import *
 
-# hyper parameters
-
-feature_size=max_time_steps
-max_steps = 100
-train_epochs = 100
-cell_type = RNNModel.CellType.RNN_CELL_TYPE_GRU
-cell_size = 512
-batch_size = 100
-num_classes = 8
-num_entity_classes = 42
-num_layers = 3
-learning_rate = 1e-4
-model_name = 'spacy_default_ent'
-
-state_feeback = False # may cause an exception when processing the last batch
-
-bi_directional=True
-validation_step = 100
-is_classifer = True
-
-time_major = False # deprecated
-
-if is_classifer is True:
-    model_path = 'model'
-    logs_path = 'logs'
-else:
-    model_path = 'model'
-    logs_path = 'logs'
-
-keep_prob = 0.85
-
-
-
 if __name__ == '__main__':
     def child_process(curr_step):
         print('Starting child process')
@@ -43,7 +10,7 @@ if __name__ == '__main__':
             set_feature_size(feature_size). \
             set_read_path(os.path.join('records','eval')). \
             set_epochs(1). \
-            set_cell_type(cell_type). \
+            set_cell_type(RNNModel.CellType.RNN_CELL_TYPE_GRU). \
             set_cell_size(cell_size). \
             set_batch_size(batch_size). \
             set_class_size(num_classes). \
@@ -74,7 +41,7 @@ if __name__ == '__main__':
         set_feature_size(feature_size).\
         set_read_path(os.path.join('records', 'train')). \
         set_epochs(train_epochs).\
-        set_cell_type(cell_type).\
+        set_cell_type(RNNModel.CellType.RNN_CELL_TYPE_GRU).\
         set_cell_size(cell_size).\
         set_batch_size(batch_size).\
         set_class_size(num_classes). \

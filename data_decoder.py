@@ -15,6 +15,7 @@ class TFDecoder(object):
 
 
         filelist = [os.path.join(self.path, f) for f in os.listdir(self.path)]
+        # print(filelist.sort())
         self.fqueue = tf.train.string_input_producer(filelist,
                                         shuffle=self.shuffle,
                                         seed=None,
@@ -25,7 +26,8 @@ class TFDecoder(object):
         key, ex = reader.read(self.fqueue)
         context_features = {
             "len": tf.FixedLenFeature([], dtype=tf.int64),
-            "label": tf.FixedLenFeature([], dtype=tf.int64)
+            "label": tf.FixedLenFeature([], dtype=tf.int64),
+            "id": tf.FixedLenFeature([], dtype=tf.int64)
         }
 
         sequence_features = {

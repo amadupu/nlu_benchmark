@@ -2,23 +2,7 @@ from rnn_model import RNNModel
 import spacy, json
 import numpy as np
 from utils import preprocess_data
-
-
-feature_size=600
-max_steps = 100
-cell_type = RNNModel.CellType.RNN_CELL_TYPE_GRU
-cell_size = 512
-batch_size = 1
-num_classes = 8
-num_entity_classes = 42
-num_layers = 3
-model_name = 'spacy_default_ent'
-is_classifer = True
-model_path = 'model'
-time_major = False
-bi_directional=True
-keep_prob = 1.0
-state_feeback = False
+from paths import *
 
 
 if __name__ == '__main__':
@@ -27,7 +11,7 @@ if __name__ == '__main__':
         set_feature_size(feature_size). \
         set_cell_type(RNNModel.CellType.RNN_CELL_TYPE_GRU). \
         set_cell_size(cell_size). \
-        set_batch_size(batch_size). \
+        set_batch_size(1). \
         set_class_size(num_classes). \
         set_entity_class_size(num_entity_classes). \
         set_layer_size(num_layers). \
@@ -42,7 +26,8 @@ if __name__ == '__main__':
 
     model.init_graph()
 
-    nlp = spacy.load('en_core_web_lg')
+    nlp = spacy.load(spacy_model_path)
+    nlp_pos = spacy.load('en_core_web_lg')
 
 
     headers = None
@@ -77,11 +62,13 @@ if __name__ == '__main__':
             if data.lower() == 'exit' or data.lower() == 'quit':
                 break
 
+            data = data.lower()   
+
             data = preprocess_data(data)
 
             word_list = data.split()
 
-            doc = nlp(data)
+            doc = nlp_pos(data)
 
             if len(word_list) != len(doc):
                 raise Exception('Doc vs Input Length Mismatch  ', len(word_list), len(doc))
@@ -104,6 +91,13 @@ if __name__ == '__main__':
                     raise Exception('Invalid vector for pos: ', pos )
 
                 pos_vector = nlp(pos)[0].vector
+                word_vector = nlp(token.text)[0]
+                if not word_vector.has_vector:
+                   token_vector = nlp('UNK')[0].vector
+                else:
+                   token_vector = word_vector.vector 
+                
+                # xs.append(token.vector)
 
                 xs.append(np.concatenate((token.vector,pos_vector),axis=-1))
                 # if not token.is_punct and not token.is_stop and not token.is_space and token.has_vector:

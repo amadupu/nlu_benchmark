@@ -199,6 +199,11 @@ def generate_data(path,is_test = False):
                                 sent.append((word, 0))
 
                     output.append(tuple((sent,label)))
+
+    #with open('output.txt','w',encoding='utf-8') as fp:
+    #    for item in output:
+    #       fp.write(str(item) + '\n')
+
     shuffle(output)
 
     headers['category_map'] = categories

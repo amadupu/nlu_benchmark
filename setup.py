@@ -12,4 +12,5 @@ if __name__ == '__main__':
     os.makedirs(r'logs/eval', exist_ok=True)
     utils.clean_dir('records')
     utils.clean_dir('logs')
+    utils.clean_dir('model')
 
