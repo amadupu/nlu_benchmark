@@ -42,13 +42,15 @@ class RNNModel(object):
         with tf.Graph().as_default():
                 with tf.name_scope('input_pipe_line'):
                     if self.oper_mode == RNNModel.OperMode.OPER_MODE_TEST:
-                        self.xs = tf.placeholder(tf.float32,[1,None,self.feature_size],name='xs')
+                        self.xs = tf.placeholder(tf.float32,[1,None,self.word_feature_size],name='xs')
                         # pad's second argument can be seen as [[up, down], [left, right]]
-                        if self.is_classifier:
-                            self.zs = tf.placeholder(tf.int64, [None], name='zs')
-                            self.ys = tf.placeholder(tf.int64, [1, None], name='ys')
-                        else:
-                            self.ys = tf.placeholder(tf.int64, [1, None], name='ys')
+
+
+                        self.ys = tf.placeholder(tf.int64, [1, None], name='ys')
+                        self.ws = tf.placeholder(tf.int64, [1, None, None], name ='ws')
+                        self.wl = tf.placeholder(tf.int64, [1, None], name='wl')
+                        self.zs = tf.placeholder(tf.int64, [None], name='zs')
+
 
                         self.steps = tf.placeholder(tf.int64, [None], name='steps')
                     else:
@@ -96,7 +98,11 @@ class RNNModel(object):
                             if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
                                 tf.summary.histogram('char_input_layer/Biases', Bc)
 
-                        dense = tf.sparse_tensor_to_dense(ws,name='dense')
+                        if self.oper_mode == RNNModel.OperMode.OPER_MODE_TEST:
+                            dense = ws
+                        else:
+                            dense = tf.sparse_tensor_to_dense(ws, name='dense')
+
                         self.dense = dense
 
                         # Batch x  Max Words x Max Char x Char Feature Size
@@ -614,8 +620,8 @@ class RNNModel(object):
         self.coord.join(self.threads)
         self.threads = None
 
-    def test(self,xs,steps):
-        feed_dict = {self.keepprob: 1.0, self.xs : xs, self.steps : steps}
+    def test(self,xs,ws,wl,steps):
+        feed_dict = {self.keepprob: 1.0, self.xs : xs, self.ws : ws, self.wl : wl, self.steps : steps}
 
         result = self.sess.run([self.class_predictions, self.entity_predictions], feed_dict)
 
