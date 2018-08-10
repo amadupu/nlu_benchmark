@@ -508,9 +508,9 @@ class RNNModel(object):
                 #       np.shape(char_state_trans), np.shape(char_rep), np.shape(xs), np.shape(x),
                 #       np.shape(wl), np.shape(wl_reshaped))
 
-                xs, x  = self.sess.run([self.xs,self.inputs],feed_dict)
-                print(np.shape(xs), np.shape(x))
-                continue
+                # xs, x  = self.sess.run([self.xs,self.inputs],feed_dict)
+                # print(np.shape(xs), np.shape(x))
+                # continue
 
                 _,_,loss,  class_accuaracy, entity_accuracy, summary, final_state , entity_predictions, scores, ys   = self.sess.run([self.cls_train_step, self.entity_train_step, self.loss, self.class_accuracy, self.entity_accuracy, self.summary, self.final_state, self.entity_predictions, self.entity_scores, self.ys],feed_dict)
                 total_loss += loss

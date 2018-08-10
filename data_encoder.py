@@ -16,7 +16,7 @@ class TFEncoder(object):
         self.file_limit = builder.file_limit
         self.is_test_data = builder.is_test_data
         self.nlp = spacy.load(spacy_model_path)
-        # self.nlp_pos = spacy.load('en_core_web_sm')
+        self.nlp_pos = spacy.load('en_core_web_sm')
         self.id = 1
         self.pos_map = dict()
 
@@ -52,7 +52,7 @@ class TFEncoder(object):
             # word_vec_len.append(len(char_vec))
 
         phrase.lower()
-        doc = self.nlp(phrase)
+        doc = self.nlp_pos(phrase)
         if len(doc) != len(sent):
             print('\nDoc: ',end='')
             for tok in doc:
@@ -221,19 +221,18 @@ if __name__ == '__main__':
 
     clean_dir('records')
 
-    # encoder = TFEncoder.Builder().\
-    #     set_data_dest(os.path.join('records','eval')).\
-    #     set_data_source(input_data_source_path).\
-    #     set_file_limit(100).\
-    #     set_test_data(True).\
-    #     build()
-    #
-    #
-    # if encoder.encode() is True:
-    #     print("Encode Eval Successful")
-    # else:
-    #     print('Encode Eval Failure')
-    #
+    encoder = TFEncoder.Builder().\
+         set_data_dest(os.path.join('records','eval')).\
+         set_data_source(input_data_source_path).\
+         set_file_limit(100).\
+         set_test_data(True).\
+         build()
+
+    if encoder.encode() is True:
+         print("Encode Eval Successful")
+    else:
+         print('Encode Eval Failure')
+    
     encoder = TFEncoder.Builder().\
         set_data_dest(os.path.join('records','train')).\
         set_data_source(input_data_source_path).\
