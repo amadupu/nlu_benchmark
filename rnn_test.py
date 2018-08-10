@@ -7,9 +7,10 @@ if __name__ == '__main__':
     def child_process(curr_step):
         print('Starting child process')
         model = RNNModel.Builder().set_max_steps(max_steps). \
-            set_feature_size(feature_size). \
+            set_word_feature_size(word_feature_size + pos_feature_size). \
             set_read_path(os.path.join('records','eval')). \
             set_epochs(1). \
+            set_char_emb_status(use_char_embeddings). \
             set_cell_type(RNNModel.CellType.RNN_CELL_TYPE_GRU). \
             set_cell_size(cell_size). \
             set_batch_size(batch_size). \
@@ -23,6 +24,9 @@ if __name__ == '__main__':
             set_classifer_status(is_classifer). \
             set_state_feedback(state_feeback). \
             set_time_major(time_major).\
+            set_char_feature_size(char_feature_size).\
+            set_char_cell_size(char_cell_size).\
+            set_char_vocab_size(char_vocab_size).\
             set_oper_mode(RNNModel.OperMode.OPER_MODE_EVAL). \
             build()
         model.evaluate(curr_step=curr_step)
@@ -37,8 +41,9 @@ if __name__ == '__main__':
 
         # eval_model.evaluate()
 
-    train_model = RNNModel.Builder().set_max_steps(max_steps).\
-        set_feature_size(feature_size).\
+    train_model = RNNModel.Builder().set_max_steps(max_steps). \
+        set_char_emb_status(use_char_embeddings) .\
+        set_word_feature_size(word_feature_size + pos_feature_size).\
         set_read_path(os.path.join('records', 'train')). \
         set_epochs(train_epochs).\
         set_cell_type(RNNModel.CellType.RNN_CELL_TYPE_GRU).\
@@ -56,6 +61,9 @@ if __name__ == '__main__':
         set_state_feedback(state_feeback). \
         set_bi_directional(bi_directional) .\
         set_classifer_status(is_classifer).\
+        set_char_feature_size(char_feature_size).\
+        set_char_cell_size(char_cell_size). \
+        set_char_vocab_size(char_vocab_size). \
         set_oper_mode(RNNModel.OperMode.OPER_MODE_TRAIN). \
         set_validation_step(validation_step).\
         build()

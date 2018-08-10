@@ -6,7 +6,7 @@ from paths import *
 
 if __name__ == '__main__':
     decoder = TFDecoder.Builder(). \
-        set_feature_size(max_time_steps). \
+        set_feature_size(word_feature_size + pos_feature_size). \
         set_num_epochs(1). \
         set_path('records/train'). \
         set_shuffle_status(True). \
@@ -18,6 +18,15 @@ if __name__ == '__main__':
 
 
 
+    dense = tf.sparse_tensor_to_dense(batch_input[3])
+
+    embeddings = tf.get_variable(
+        name='word_embeddings',
+        dtype=tf.float32,
+
+        shape=[char_vocab_size, char_feature_size])
+
+    word_vec = tf.nn.embedding_lookup(embeddings, dense)
 
     # xs = batch_input[1]
     #
@@ -41,9 +50,9 @@ if __name__ == '__main__':
         threads = tf.train.start_queue_runners(sess,coord)
         try:
             while not coord.should_stop():
-                result = sess.run(batch_input)
+                result,char_vec = sess.run([batch_input, word_vec])
 
-                print(np.shape(result[0]),np.shape(result[1]), result[2], result[3])
+                print(np.shape(result[0]),np.shape(result[1]), np.shape(char_vec), np.shape(result[4]))
                 # print(np.shape(result[4]),np.shape(result[5]))
 
         except tf.errors.OutOfRangeError:

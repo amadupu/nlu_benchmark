@@ -8,7 +8,7 @@ from paths import *
 if __name__ == '__main__':
 
     model = RNNModel.Builder().set_max_steps(max_steps). \
-        set_feature_size(feature_size). \
+        set_feature_size(word_feature_size + pos_feature_size). \
         set_cell_type(RNNModel.CellType.RNN_CELL_TYPE_GRU). \
         set_cell_size(cell_size). \
         set_batch_size(1). \
@@ -21,13 +21,16 @@ if __name__ == '__main__':
         set_bi_directional(bi_directional). \
         set_state_feedback(state_feeback). \
         set_classifer_status(is_classifer). \
+        set_char_feature_size(char_feature_size). \
+        set_char_cell_size(char_cell_size). \
+        set_char_vocab_size(char_vocab_size). \
         set_oper_mode(RNNModel.OperMode.OPER_MODE_TEST). \
         build()
 
     model.init_graph()
 
     nlp = spacy.load(spacy_model_path)
-    nlp_pos = spacy.load('en_core_web_lg')
+    # nlp_pos = spacy.load('en_core_web_lg')
 
 
     headers = None
@@ -68,7 +71,7 @@ if __name__ == '__main__':
 
             word_list = data.split()
 
-            doc = nlp_pos(data)
+            doc = nlp(data)
 
             if len(word_list) != len(doc):
                 raise Exception('Doc vs Input Length Mismatch  ', len(word_list), len(doc))
@@ -90,21 +93,27 @@ if __name__ == '__main__':
                 if not nlp(pos)[0].has_vector:
                     raise Exception('Invalid vector for pos: ', pos )
 
-                pos_vector = nlp(pos)[0].vector
+                pos_vector = nlp(pos)[0].vector[:pos_feature_size]
                 word_vector = nlp(token.text)[0]
+
                 if not word_vector.has_vector:
                    token_vector = nlp('UNK')[0].vector
                 else:
                    token_vector = word_vector.vector 
-                
-                # xs.append(token.vector)
 
-                xs.append(np.concatenate((token.vector,pos_vector),axis=-1))
+                token_vector = token_vector[:word_feature_size]
+
+                # xs.append(token.vector)
+                if pos_feature_size > 0:
+                    xs.append(np.concatenate((token.vector,pos_vector),axis=-1))
+                else:
+                    xs.append(token.vector)
+
                 # if not token.is_punct and not token.is_stop and not token.is_space and token.has_vector:
                 #     xs.append(token.vector)
 
             steps = len(xs)
-            xs = np.reshape(xs, [1, steps, feature_size])
+            xs = np.reshape(xs, [1, steps, word_feature_size + pos_feature_size])
 
             result = model.test(xs, [steps])
 

@@ -98,6 +98,101 @@ def preprocess_data(segment):
 
     return segment
 
+def validate_char_vocab(path,char_set):
+
+    filename_pattern = re.compile(r'(train.*full|validate.*)[.]json')
+
+    for r,d,f in os.walk(path):
+        for filename in f:
+            # define data category train/test
+            if not filename_pattern.match(filename):
+                continue
+
+            label_name = os.path.basename(r)
+
+            filepath = os.path.join(r, filename)
+
+            data = None
+
+            try:
+                print('Loading {} {} ..'.format(label_name, filename), end='')
+                with open(filepath, encoding='utf-8', mode='r') as fp:
+                    data = json.load(fp)
+                print('SUCCESS')
+            except Exception as err:
+                print('FAILED! ', err)
+
+            if data is None:
+                continue
+
+            for topic, values in data.items():
+                for value in values:
+                    data_list = value['data']
+                    sent = list()
+                    for elem in data_list:
+                        segment = elem['text']
+                        for ch in segment:
+                            try:
+                                print(char_set.index(ch),end=' ')
+                            except Exception as err:
+                                print('Failed to find char in vocab: ', ch, err)
+
+
+
+
+
+
+def build_char_vocab(path):
+    filename_pattern = re.compile(r'(train.*full|validate.*)[.]json')
+
+
+
+    chars = set()
+
+
+    for r,d,f in os.walk(path):
+        for filename in f:
+            # define data category train/test
+            if not filename_pattern.match(filename):
+                continue
+
+            label_name = os.path.basename(r)
+
+            filepath = os.path.join(r, filename)
+
+            data = None
+
+            try:
+                print('Loading {} {} ..'.format(label_name, filename), end='')
+                with open(filepath, encoding='utf-8', mode='r') as fp:
+                    data = json.load(fp)
+                print('SUCCESS')
+            except Exception as err:
+                print('FAILED! ', err)
+
+            if data is None:
+                continue
+
+            for topic, values in data.items():
+                for value in values:
+                    data_list = value['data']
+                    sent = list()
+                    for elem in data_list:
+                        segment = elem['text']
+                        for ch in segment:
+                            chars.add(ch)
+
+    with open('vocab_char.txt','w', encoding='utf-8') as fp:
+        chars = list(chars)
+        chars.sort()
+        output = dict()
+        output['vocab'] = chars
+        json.dump(output,fp)
+
+
+
+
+
 
 def generate_data(path,is_test = False):
 

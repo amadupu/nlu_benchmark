@@ -21,6 +21,9 @@ class TFDecoder(object):
                                         seed=None,
                                         num_epochs=self.num_epochs)
 
+
+
+
     def dequeue(self,classifer=False):
         reader = tf.TFRecordReader()
         key, ex = reader.read(self.fqueue)
@@ -32,7 +35,10 @@ class TFDecoder(object):
 
         sequence_features = {
             "tokens": tf.FixedLenSequenceFeature([self.feature_size], dtype=tf.float32),
-            "entity_labels": tf.FixedLenSequenceFeature([], dtype=tf.int64)
+            "entity_labels": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+            "char_tokens": tf.VarLenFeature(dtype=tf.int64),
+            "char_len": tf.FixedLenSequenceFeature([], dtype=tf.int64),
+
         }
 
         context_parsed, sequence_parsed = tf.parse_single_sequence_example(serialized=ex,
@@ -43,7 +49,7 @@ class TFDecoder(object):
         # if classifer:
         #     return context_parsed["len"], sequence_parsed["tokens"], context_parsed["label"]
         # else:
-        return context_parsed["len"], sequence_parsed["tokens"], sequence_parsed["entity_labels"], context_parsed["label"]
+        return context_parsed["len"], sequence_parsed["tokens"], sequence_parsed["entity_labels"], sequence_parsed["char_tokens"], sequence_parsed["char_len"], context_parsed["label"],
 
     class Builder():
         def __init__(self):
@@ -81,13 +87,25 @@ class TFDecoder(object):
 if __name__ == '__main__':
 
     decoder = TFDecoder.Builder().\
-        set_feature_size(max_time_steps).\
+        set_feature_size(word_feature_size + pos_feature_size).\
         set_num_epochs(1).\
         set_path(os.path.join('records','train')).\
-        set_shuffle_status(True).\
+        set_shuffle_status(False).\
         build()
 
     batch_input = decoder.dequeue(True)
+
+
+
+    dense = tf.sparse_tensor_to_dense(batch_input[3])
+
+    embeddings = tf.get_variable(
+        name='word_embeddings',
+        dtype=tf.float32,
+
+        shape=[char_vocab_size, char_feature_size])
+
+    word_vec = tf.nn.embedding_lookup(embeddings, dense)
 
     l_init = tf.global_variables_initializer()
     g_init = tf.local_variables_initializer()
@@ -99,8 +117,8 @@ if __name__ == '__main__':
         threads = tf.train.start_queue_runners(sess,coord)
         try:
             while not coord.should_stop():
-                result = sess.run(batch_input)
-                print(result[0],np.shape(result[1]),result[2] , result[3])
+                result ,dense_char, char_vec = sess.run([batch_input,dense,word_vec])
+                print(result[0],np.shape(result[1]), np.shape(char_vec), np.shape(dense_char))
         except tf.errors.OutOfRangeError:
             pass
         finally:

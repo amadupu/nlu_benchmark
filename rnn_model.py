@@ -11,7 +11,9 @@ class RNNModel(object):
         # batch size
         self.batch_size = builder.batch_size
         self.read_path = builder.read_path
-        self.feature_size = builder.feature_size
+        self.word_feature_size = builder.word_feature_size
+        self.char_feature_size = builder.char_feature_size
+        self.char_cell_size = builder.char_cell_size
         self.num_layers = builder.num_layers
         self.max_steps = builder.max_steps
         self.num_classes = builder.num_classes
@@ -32,16 +34,12 @@ class RNNModel(object):
         self.is_timemajor = builder.is_timemajor
         self.is_bidirectional = builder.is_bidirectional
         self.is_state_feedback = builder.is_state_feedback
+        self.char_vocab_size = builder.char_vocab_size
+        self.use_char_embeddings = builder.use_char_embeddings
         self.build_graph()
 
     def build_graph(self):
         with tf.Graph().as_default():
-
-            # if self.oper_mode == RNNModel.OperMode.TEST or \
-            #         self.oper_mode == RNNModel.OperMode.OPER_MODE_EVAL:
-            #     filename = ".".join([tf.train.latest_checkpoint(self.model_path),'meta'])
-            #     self.saver = tf.train.import_meta_graph(filename)
-            # else:
                 with tf.name_scope('input_pipe_line'):
                     if self.oper_mode == RNNModel.OperMode.OPER_MODE_TEST:
                         self.xs = tf.placeholder(tf.float32,[1,None,self.feature_size],name='xs')
@@ -55,35 +53,154 @@ class RNNModel(object):
                         self.steps = tf.placeholder(tf.int64, [None], name='steps')
                     else:
                         decoder = TFDecoder.Builder(). \
-                            set_feature_size(self.feature_size). \
+                            set_feature_size(self.word_feature_size). \
                             set_num_epochs(self.epochs). \
                             set_path(self.read_path). \
                             set_shuffle_status(True). \
                             build()
-                        self.steps, self.xs , self.ys, self.zs = tf.train.batch(tensors=decoder.dequeue(self.is_classifier), batch_size=self.batch_size,
-                                                                  dynamic_pad=True,
-                                                                  allow_smaller_final_batch=True,name='batch_processor')
+                        self.steps, self.xs , self.ys, self.ws, self.wl, self.zs = tf.train.batch(tensors=decoder.dequeue(self.is_classifier),
+                                                                                                  batch_size=self.batch_size,
+                                                                                                  dynamic_pad=True,
+                                                                                                  allow_smaller_final_batch=True,
+                                                                                                  name='batch_processor')
                         self.global_step = tf.Variable(0, name="global_step", trainable=False)
-                        # self.global_step = tf.Variable(0, name="global_step", trainable=False)
+
+                    xs = self.xs
+                    ys = self.ys
+                    zs = self.zs
+                    ws = self.ws
+                    wl = self.wl
+
+                    self.wl_reshaped = tf.reshape(wl,[-1])
+
+                    self.keepprob = tf.placeholder(tf.float32, [], name='keeprob')
+
+                if self.use_char_embeddings is True:
+
+                    with tf.name_scope('embedding_layer'):
+                        embeddings = tf.get_variable(
+                            name='word_embeddings',
+                            dtype=tf.float32,
+                            shape=[self.char_vocab_size, self.char_feature_size])
+
+                    # char representation
+                    # input weights
+                    with tf.name_scope('char_input_layer'):
+                        with tf.name_scope('Weigths'):
+                            initalizer = tf.contrib.layers.xavier_initializer()
+                            Wc = self.weight_variable([self.char_feature_size, self.char_cell_size], initializer=initalizer, name='Wc')
+                            if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
+                                tf.summary.histogram('char_input_layer/Weights', Wc)
+                        with tf.name_scope('Biases'):
+                            Bc = self.bias_variable([self.char_cell_size], name='Bc')
+                            if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
+                                tf.summary.histogram('char_input_layer/Biases', Bc)
+
+                        dense = tf.sparse_tensor_to_dense(ws,name='dense')
+                        self.dense = dense
+
+                        # Batch x  Max Words x Max Char x Char Feature Size
+                        char_vec = tf.nn.embedding_lookup(embeddings, dense,name='embedded_lookup')
+                        self.char_vec = char_vec
+
+                        char_vec = tf.reshape(char_vec,[-1,self.char_feature_size])
+
+                        self.char_vec_reshaped = char_vec
+
+                        char_rnn_inputs = tf.add(tf.matmul(char_vec, Wc), Bc)
+                        # self.input_test = rnn_inputs
+
+                        char_rnn_inputs = tf.nn.dropout(char_rnn_inputs, keep_prob=self.keepprob)
+
+                        char_rnn_inputs = tf.reshape(char_rnn_inputs, [-1, tf.shape(dense)[-1], self.char_cell_size],
+                                         name='char_rnn_inputs')
+
+                        self.char_rnn_inputs = char_rnn_inputs
+
+                        with tf.name_scope('char_rnn_layer'):
+                            if self.cell_type == RNNModel.CellType.RNN_CEL_TYPE_LSTM:
+                                char_cell_fw = tf.nn.rnn_cell.LSTMCell(self.char_cell_size, state_is_tuple=True, name='CharLSTMCell')
+                                char_cell_bw = tf.nn.rnn_cell.LSTMCell(self.char_cell_size, state_is_tuple=True, name='CharLSTMCell')
+                            else:
+                                char_cell_fw = tf.nn.rnn_cell.GRUCell(self.char_cell_size, name='CharGRUCell')
+                                char_cell_bw = tf.nn.rnn_cell.GRUCell(self.char_cell_size, name='CharGRUCell')
+
+                            char_cell_fw = tf.nn.rnn_cell.DropoutWrapper(char_cell_fw, input_keep_prob=self.keepprob)
+                            char_cell_bw = tf.nn.rnn_cell.DropoutWrapper(char_cell_bw, input_keep_prob=self.keepprob)
+
+                            if self.cell_type == RNNModel.CellType.RNN_CEL_TYPE_LSTM:
+                                char_cell_fw = tf.nn.rnn_cell.MultiRNNCell([char_cell_fw] * self.num_layers, state_is_tuple=True)
+                                char_cell_bw = tf.nn.rnn_cell.MultiRNNCell([char_cell_bw] * self.num_layers, state_is_tuple=True)
+                            else:
+                                char_cell_fw = tf.nn.rnn_cell.MultiRNNCell([char_cell_fw] * self.num_layers)
+                                char_cell_bw = tf.nn.rnn_cell.MultiRNNCell([char_cell_bw] * self.num_layers)
+
+                            char_cell_fw = tf.nn.rnn_cell.DropoutWrapper(char_cell_fw, output_keep_prob=self.keepprob)
+                            char_cell_bw = tf.nn.rnn_cell.DropoutWrapper(char_cell_bw, output_keep_prob=self.keepprob)
+
+                            char_batch_size = tf.shape(char_rnn_inputs)[0]
+
+                            self.char_batch_size = char_batch_size
+
+                            # self.tf_batch_size = batch_size
+
+                            char_state_fw = char_cell_fw.zero_state(char_batch_size, tf.float32)
+                            char_state_bw = char_cell_bw.zero_state(char_batch_size, tf.float32)
+
+                            if self.is_bidirectional is True:
+
+                                char_outputs, char_final_state = tf.nn.bidirectional_dynamic_rnn(cell_fw=char_cell_fw,
+                                                                            cell_bw=char_cell_bw,
+                                                                            inputs=char_rnn_inputs,
+                                                                            sequence_length=tf.reshape(wl,[-1]),
+                                                                            initial_state_fw=char_state_fw,
+                                                                            initial_state_bw=char_state_bw,
+                                                                            time_major=False)
+
+                                self.char_rnn_outputs = tf.concat(char_outputs, 2)
+                                self.char_final_state = char_final_state
+
+                                char_feature_size =  2 * self.char_feature_size * self.num_layers
 
 
-                xs = self.xs
-                ys = self.ys
-                zs = self.zs
 
-                # if self.is_timemajor is True:
-                #     xs = tf.transpose(self.xs,perm=[1,0,2])
-                #     ys = tf.transpose(self.ys)
-                # else:
-                #     xs = self.xs
-                #     ys = self.ys
 
-                self.keepprob = tf.placeholder(tf.float32, [], name='keeprob')
+                                self.char_state_trans = tf.transpose(self.char_final_state,perm=[2,0,1,3])
 
+                                self.char_rep = tf.reshape(self.char_state_trans,[tf.shape(self.char_rnn_outputs)[0], -1])
+                                # (self.state_fw, self.state_bw) = self.final_state
+                            else:
+
+                                char_outputs, char_final_state = tf.nn.dynamic_rnn(char_cell_fw, char_rnn_inputs, sequence_length=tf.reshape(wl,[-1]),
+                                                              initial_state=char_state_fw, time_major=False)
+
+                                self.char_rnn_outputs = char_outputs
+                                self.char_final_state = char_final_state
+
+                                self.char_state_trans = tf.transpose(self.char_final_state, perm=[1, 0, 2])
+
+                                self.char_rep = tf.reshape(self.char_state_trans, [tf.shape(self.char_rnn_outputs)[0], None])
+
+                                char_feature_size = self.char_feature_size * self.num_layers
+
+                                # self.state_fw = self.final_state
+
+
+                    x = tf.concat((tf.reshape(xs,[-1,self.word_feature_size]), self.char_rep),axis=-1)
+
+                    self.inputs = x
+
+                    feature_size = char_feature_size + self.word_feature_size
+                else:
+                    x = tf.reshape(xs, [-1, self.word_feature_size])
+                    self.inputs = x
+                    feature_size = self.word_feature_size
+
+                # word representation
                 # input weights
                 with tf.name_scope('input_layer'):
                     with tf.name_scope('Weigths'):
-                        Win = self.weight_variable([self.feature_size,self.cell_size],name='W_in')
+                        Win = self.weight_variable([feature_size,self.cell_size],name='W_in')
                         if self.oper_mode == RNNModel.OperMode.OPER_MODE_TRAIN:
                             tf.summary.histogram('input_layer/Weights',Win)
                     with tf.name_scope('Biases'):
@@ -92,11 +209,8 @@ class RNNModel(object):
                             tf.summary.histogram('input_layer/Biases', Bin)
 
 
-                    x = tf.reshape(xs,[-1,self.feature_size])
-
 
                     rnn_inputs = tf.add(tf.matmul(x,Win),Bin)
-                    # self.input_test = rnn_inputs
 
                     rnn_inputs = tf.nn.dropout(rnn_inputs,keep_prob=self.keepprob)
 
@@ -327,8 +441,9 @@ class RNNModel(object):
                     self.summary_writer = tf.summary.FileWriter(self.logs_path + '/eval', self.sess.graph)
 
 
-    def weight_variable(self, shape, name='weights'):
-        initializer = tf.random_normal_initializer(mean=0., stddev=1.,)
+    def weight_variable(self, shape, initializer = None, name='weights'):
+        if initializer is None:
+            initializer = tf.random_normal_initializer(mean=0., stddev=1.,)
         return tf.get_variable(shape=shape, initializer=initializer, name=name)
 
     def bias_variable(self, shape, name='biases'):
@@ -375,22 +490,27 @@ class RNNModel(object):
             while not self.coord.should_stop():
 
 
-                # c1,c2,c3,pred, logits, fw,bw,fs,xs,ys,yf,steps  = self.sess.run([self.check_tensor_1, self.check_tensor_2,self.check_tensor_3,self.predictions, self.logits, self.state_fw, self.state_bw, self.final_state, self.xs, self.ys, self.flat_labels, self.steps],feed_dict)
-                # print('c1: ',np.shape(c1))
-                # print('c2: ',np.shape(c2))
-                # print('c3: ', np.shape(c3))
-                # print('fw: ',np.shape(fw))
-                # print('bw: ',np.shape(bw))
-                # print('fs: ',np.shape(fs))
-                #
-                # print('pred: ', np.shape(pred))
-                # print('logits: ',np.shape(logits))
-                #
-                # print('xs: ',np.shape(xs))
-                # print('ys: ',ys, np.shape(ys))
-                # print('yf: ',yf, np.shape(yf))
-                # print('steps: ',steps, np.shape(steps))
-                # continue
+                # dense, char_vec, char_vec_reshaped, char_rnn_inputs, char_rnn_outputs, char_final_state, \
+                # char_state_trans, char_rep, xs, x, wl,wl_reshaped  = self.sess.run([self.dense,
+                #                                                                                       self.char_vec,
+                #                                                                                       self.char_vec_reshaped,
+                #                                                                                       self.char_rnn_inputs,
+                #                                                                                       self.char_rnn_outputs,
+                #                                                                                       self.char_final_state,
+                #                                                                                       self.char_state_trans,
+                #                                                                                       self.char_rep,
+                #                                                                                       self.xs,
+                #                                                                                       self.inputs,
+                #                                                                                       self.wl,
+                #                                                                                       self.wl_reshaped],feed_dict)
+                # print(np.shape(dense), np.shape(char_vec), np.shape(char_vec_reshaped), np.shape(char_rnn_inputs),
+                #       np.shape(char_rnn_outputs), np.shape(char_final_state),
+                #       np.shape(char_state_trans), np.shape(char_rep), np.shape(xs), np.shape(x),
+                #       np.shape(wl), np.shape(wl_reshaped))
+
+                xs, x  = self.sess.run([self.xs,self.inputs],feed_dict)
+                print(np.shape(xs), np.shape(x))
+                continue
 
                 _,_,loss,  class_accuaracy, entity_accuracy, summary, final_state , entity_predictions, scores, ys   = self.sess.run([self.cls_train_step, self.entity_train_step, self.loss, self.class_accuracy, self.entity_accuracy, self.summary, self.final_state, self.entity_predictions, self.entity_scores, self.ys],feed_dict)
                 total_loss += loss
@@ -518,7 +638,7 @@ class RNNModel(object):
             self.epochs = 1
             self.batch_size = 20
             self.read_path = ''
-            self.feature_size = 300
+            self.word_feature_size = 300
             self.num_classes = 8
             self.num_entity_classes = 42
             self.cell_size = 128
@@ -536,6 +656,10 @@ class RNNModel(object):
             self.is_timemajor = False
             self.is_bidirectional = False
             self.is_state_feedback = False
+            self.char_feature_size = 50
+            self.char_cell_size = 200
+            self.char_vocab_size = 100
+            self.use_char_embeddings = True
 
         def set_state_feedback(self,flag):
             self.is_state_feedback = flag
@@ -558,9 +682,15 @@ class RNNModel(object):
             self.read_path = val
             return self
 
-        def set_feature_size(self,val):
-            self.feature_size = val
+        def set_word_feature_size(self,val):
+            self.word_feature_size = val
             return self
+
+
+        def set_char_feature_size(self,val):
+            self.char_feature_size = val
+            return self
+
 
         def set_class_size(self,val):
             self.num_classes = val
@@ -573,6 +703,10 @@ class RNNModel(object):
 
         def set_cell_size(self,val):
             self.cell_size = val
+            return self
+
+        def set_char_cell_size(self,val):
+            self.char_cell_size = val
             return self
 
         def set_cell_type(self,val):
@@ -621,6 +755,14 @@ class RNNModel(object):
 
         def set_time_major(self,flag):
             self.is_timemajor = flag
+            return self
+
+        def set_char_vocab_size(self, val):
+            self.char_vocab_size = val
+            return self
+
+        def set_char_emb_status(self,flag):
+            self.use_char_embeddings = flag
             return self
 
         def build(self):
